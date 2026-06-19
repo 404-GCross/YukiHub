@@ -1,0 +1,119 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '产物方式'
+        required: true
+        type: choice
+        default: 'artifact'
+        options:
+          - artifact
+          - release
+          - pre-release
+      version:
+        description: '版本号 (Release 必填)'
+        required: false
+        type: string
+        default: ''
+      notes:
+        description: '更新说明'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fix Maven repos for CI (google/mavenCentral first)
+        run: |
+          # In each repositories block, move google/mavenCentral/gradlePluginPortal to top
+          awk '
+          BEGIN { in_repos=0; saved="" }
+          /repositories[[:space:]]*\{/ { in_repos=1; print; next }
+          in_repos && /google\(\)/ { saved=saved $0 "\n"; next }
+          in_repos && /mavenCentral\(\)/ { saved=saved $0 "\n"; next }
+          in_repos && /gradlePluginPortal\(\)/ { saved=saved $0 "\n"; next }
+          in_repos && /\}/ { printf "%s", saved; saved=""; in_repos=0; print; next }
+          { print }
+          ' settings.gradle > settings.gradle.tmp && mv settings.gradle.tmp settings.gradle
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-33 build-tools;33.0.0'
+
+      - name: Set version (release only)
+        if: ${{ github.event.inputs.mode == 'release' || github.event.inputs.mode == 'pre-release' }}
+        run: |
+          V="${{ github.event.inputs.version }}"
+          if [ -z "$V" ]; then echo "version is required"; exit 1; fi
+          sed -i "s/versionName \".*\"/versionName \"$V\"/" app/build.gradle
+
+      - name: Generate debug keystore
+        run: |
+          if [ ! -f ~/.android/debug.keystore ]; then
+            mkdir -p ~/.android
+            keytool -genkey -v \
+              -keystore ~/.android/debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Build release APK
+        run: chmod +x gradlew && ./gradlew assembleRelease
+
+      - name: Find APK
+        id: apk
+        run: |
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          echo "path=$APK" >> $GITHUB_OUTPUT
+          echo "name=$(basename "$APK")" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YukiHub
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 30
+
+      - name: Create Release
+        if: ${{ github.event.inputs.mode == 'release' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: v${{ github.event.inputs.version }}
+          body: ${{ github.event.inputs.notes }}
+          files: ${{ steps.apk.outputs.path }}
+          draft: false
+          prerelease: false
+
+      - name: Create Pre-Release
+        if: ${{ github.event.inputs.mode == 'pre-release' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: v${{ github.event.inputs.version }}
+          body: ${{ github.event.inputs.notes }}
+          files: ${{ steps.apk.outputs.path }}
+          draft: false
+          prerelease: true
