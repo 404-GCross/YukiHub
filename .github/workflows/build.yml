@@ -63,6 +63,11 @@ jobs:
           echo "release_version=$V" >> $GITHUB_OUTPUT
         id: set_version
 
+      - name: Set artifact name
+        id: artifact_name
+        run: |
+          echo "name=YukiHub-v${{ steps.set_version.outputs.release_version || steps.app_version.outputs.version }}" >> $GITHUB_OUTPUT
+
       - name: Generate debug keystore
         run: |
           if [ ! -f ~/.android/debug.keystore ]; then
@@ -89,7 +94,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YukiHub
+          name: ${{ steps.artifact_name.outputs.name }}
           path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
