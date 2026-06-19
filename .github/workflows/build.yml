@@ -13,7 +13,7 @@ on:
           - release
           - pre-release
       version:
-        description: '版本号 (Release 必填)'
+        description: '版本号 (留空则使用 app/build.gradle 中的版本)'
         required: false
         type: string
         default: ''
@@ -46,12 +46,22 @@ jobs:
         with:
           packages: 'platforms;android-33 build-tools;33.0.0'
 
-      - name: Set version (release only)
+      - name: Read app version
+        id: app_version
+        run: |
+          V=$(grep -oP 'versionName "\K[^"]+' app/build.gradle)
+          echo "version=$V" >> $GITHUB_OUTPUT
+
+      - name: Set version
         if: ${{ github.event.inputs.mode == 'release' || github.event.inputs.mode == 'pre-release' }}
         run: |
           V="${{ github.event.inputs.version }}"
-          if [ -z "$V" ]; then echo "version is required"; exit 1; fi
-          sed -i "s/versionName \".*\"/versionName \"$V\"/" app/build.gradle
+          if [ -z "$V" ]; then V="${{ steps.app_version.outputs.version }}"; fi
+          if [ "$V" != "${{ steps.app_version.outputs.version }}" ]; then
+            sed -i "s/versionName \".*\"/versionName \"$V\"/" app/build.gradle
+          fi
+          echo "release_version=$V" >> $GITHUB_OUTPUT
+        id: set_version
 
       - name: Generate debug keystore
         run: |
@@ -87,8 +97,8 @@ jobs:
         if: ${{ github.event.inputs.mode == 'release' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.event.inputs.version }}
-          name: v${{ github.event.inputs.version }}
+          tag_name: v${{ steps.set_version.outputs.release_version }}
+          name: v${{ steps.set_version.outputs.release_version }}
           body: ${{ github.event.inputs.notes }}
           files: ${{ steps.apk.outputs.path }}
           draft: false
@@ -98,8 +108,8 @@ jobs:
         if: ${{ github.event.inputs.mode == 'pre-release' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.event.inputs.version }}
-          name: v${{ github.event.inputs.version }}
+          tag_name: v${{ steps.set_version.outputs.release_version }}
+          name: v${{ steps.set_version.outputs.release_version }}
           body: ${{ github.event.inputs.notes }}
           files: ${{ steps.apk.outputs.path }}
           draft: false
