@@ -37,16 +37,39 @@ jobs:
 
       - name: Fix Maven repos for CI
         run: |
-          python3 -c "
-          import re
-          # Remove aliyun/bintray/clojars/jitpack maven lines that return 502 from CI
-          with open('settings.gradle') as f:
-              content = f.read()
-          content = re.sub(r'\s*maven\s*\{\s*url\s*['\"']https?://(maven\.aliyun|dl\.bintray|clojars|jitpack)[^'\"]*['\"']\s*\}\s*\n', '', content)
-          with open('settings.gradle', 'w') as f:
-              f.write(content)
-          print('Removed China-only mirrors for CI')
-          "
+          cat > settings.gradle << 'GRADLE'
+          pluginManagement {
+            repositories {
+              google()
+              mavenCentral()
+              gradlePluginPortal()
+              maven { url 'https://maven.aliyun.com/repository/public/' }
+              maven { url 'https://maven.aliyun.com/repository/google/' }
+              maven { url 'https://maven.aliyun.com/repository/gradle-plugin/' }
+              maven { url 'https://dl.bintray.com/ppartisan/maven/' }
+              maven { url 'https://clojars.org/repo/' }
+              maven { url 'https://jitpack.io' }
+            }
+          }
+
+          dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+              google()
+              mavenCentral()
+              maven { url 'https://maven.aliyun.com/repository/public/' }
+              maven { url 'https://maven.aliyun.com/repository/google/' }
+              maven { url 'https://maven.aliyun.com/repository/gradle-plugin/' }
+              maven { url 'https://dl.bintray.com/ppartisan/maven/' }
+              maven { url 'https://clojars.org/repo/' }
+              maven { url 'https://jitpack.io' }
+            }
+          }
+
+          rootProject.name = "YukiHub"
+
+          include(":app")
+          GRADLE
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
