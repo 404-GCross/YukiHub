@@ -1,4 +1,4 @@
-name: 构建App并发布
+name: 构建APP并发布
 
 on:
   workflow_dispatch:
