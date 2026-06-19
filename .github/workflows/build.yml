@@ -35,18 +35,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fix Maven repos for CI (google/mavenCentral first)
+      - name: Fix Maven repos for CI
         run: |
-          # In each repositories block, move google/mavenCentral/gradlePluginPortal to top
-          awk '
-          BEGIN { in_repos=0; saved="" }
-          /repositories[[:space:]]*\{/ { in_repos=1; print; next }
-          in_repos && /google\(\)/ { saved=saved $0 "\n"; next }
-          in_repos && /mavenCentral\(\)/ { saved=saved $0 "\n"; next }
-          in_repos && /gradlePluginPortal\(\)/ { saved=saved $0 "\n"; next }
-          in_repos && /\}/ { printf "%s", saved; saved=""; in_repos=0; print; next }
-          { print }
-          ' settings.gradle > settings.gradle.tmp && mv settings.gradle.tmp settings.gradle
+          python3 -c "
+          import re
+          # Remove aliyun/bintray/clojars/jitpack maven lines that return 502 from CI
+          with open('settings.gradle') as f:
+              content = f.read()
+          content = re.sub(r'\s*maven\s*\{\s*url\s*['\"']https?://(maven\.aliyun|dl\.bintray|clojars|jitpack)[^'\"]*['\"']\s*\}\s*\n', '', content)
+          with open('settings.gradle', 'w') as f:
+              f.write(content)
+          print('Removed China-only mirrors for CI')
+          "
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
